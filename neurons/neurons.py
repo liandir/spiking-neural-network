@@ -11,7 +11,7 @@ class LIFrate:
         tau_v=0.1,      # membrane potential time constant
         tau_s=1,        # synapse time constant
         R=5,            # membrane resistance
-        activation=f6,
+        activation=f5,
         gamma=1,
         theta=0.5
     ):  
