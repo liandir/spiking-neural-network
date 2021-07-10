@@ -1,2 +1,2 @@
 # spiking-neural-network
-A python package for simulating spiking neural networks.
+A python package for simulating biological neural networks.
