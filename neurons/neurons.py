@@ -42,7 +42,7 @@ class LIFrate:
     
     @property
     def outputs(self):
-        return 
+        return self.activation(self.gamma * (self.voltage - self.v_thres))
         
     def step(self, dt=0.001):
         self.current = self.synapses @ self.inputs # + self.biases
@@ -55,7 +55,6 @@ class LIFrate:
             self.synapses += np.outer(ltp - ltd, self.inputs) / self.tau_s * dt
         
         self.voltage += (self.v_rest - self.voltage + self.R * self.current) / self.tau_v * dt
-        self.outputs = self.activation(self.gamma * (self.voltage - self.v_thres))
         
     def __repr__(self):
         if self.compiled:
