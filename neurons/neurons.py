@@ -34,7 +34,6 @@ class LIFrate:
         
         self.inputs = None
         self.synapses = None
-        self.outputs = None
         
         self.compiled = False
         self.train = False
