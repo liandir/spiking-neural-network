@@ -12,7 +12,7 @@ class LIFrate:
         tau_s=1,        # synapse time constant
         R=5,            # membrane resistance
         activation=f5,
-        gamma=1,
+        gamma=0.5,
         theta=0.5
     ):  
         self.size = size
@@ -31,6 +31,7 @@ class LIFrate:
         # variables
         self.current = np.zeros(shape=(self.size), dtype=np.float32)
         self.voltage = self.v_rest * np.ones(shape=(self.size), dtype=np.float32)
+        self.outputs = np.zeros(shape=self.size, dtype=np.float32)
         
         self.inputs = None
         self.synapses = None
@@ -38,13 +39,9 @@ class LIFrate:
         self.compiled = False
         self.train = False
         self.stim = None
-    
-    @property
-    def outputs(self):
-        return self.activation(self.gamma * (self.voltage - self.v_thres))
         
     def step(self, dt=0.001):
-        self.current = self.synapses @ self.inputs # + self.biases
+        self.current = self.synapses @ self.inputs
         if self.stim is not None:
             self.current += self.stim
         
@@ -54,6 +51,7 @@ class LIFrate:
             self.synapses += np.outer(ltp - ltd, self.inputs) / self.tau_s * dt
         
         self.voltage += (self.v_rest - self.voltage + self.R * self.current) / self.tau_v * dt
+        self.outputs = self.activation(self.gamma * (self.voltage - self.v_thres))
         
     def __repr__(self):
         if self.compiled:
@@ -92,12 +90,12 @@ class LIF:
         self.tau_r = tau_r
         self.tau_s = tau_s
         self.theta = 0.0
-        self.alpha = 1
         
         # variables
-        self.refractory = np.zeros(shape=(self.size), dtype=np.float32)
-        self.current = np.zeros(shape=(self.size), dtype=np.float32)
-        self.voltage = self.v_rest * np.ones(shape=(self.size), dtype=np.float32)
+        self.refractory = np.zeros(shape=self.size, dtype=np.float32)
+        self.current = np.zeros(shape=self.size, dtype=np.float32)
+        self.voltage = self.v_rest * np.ones(shape=self.size, dtype=np.float32)
+        self.outputs = np.zeros(shape=self.size, dtype=np.float32)
         
         self.inputs = None
         self.synapses = None
@@ -106,11 +104,6 @@ class LIF:
         
         self.compiled = False
         self.train = False
-    
-    @property
-    def outputs(self):
-        '''Get output/spikes.'''
-        return (self.voltage > self.v_thres).astype(np.float32)
         
     def step(self, dt):
         '''Implements the LIF nonlinearity.'''
@@ -129,73 +122,174 @@ class LIF:
                               
         self.dendrites += dd
         self.refractory += dr
-        self.voltage = np.where(self.outputs, self.v_reset, self.voltage)
-        self.voltage += dv
+        self.voltage = np.where(self.outputs, self.v_reset, self.voltage + dv)
+        self.outputs = np.where(self.voltage > self.v_thres, 1.0, 0.0)
         
     def __repr__(self):
         if self.compiled:
             return f'LIFBundle(size={self.size}, inputs={self.inputs.shape})'
         else:
             return f'LIFBundle(size={self.size}, inputs={self.inputs})'
+
+        
+class ExpIF:
     
-    
+    def __init__(self,
+        size,           # number of neurons
+        v_rest=-70,     # membrane resting potential
+        v_thres=-55,    # membrane threshold potential
+        v_reset=-65,    # membrane reset potential
+        v_spike=30,
+        R_d=10,         # membrane resistance
+        R_r=20,         # membrane resistance
+        R_v=50,         # membrane resistance
+        D=5,           # membrane exponential delta
+        tau_v=0.1,      # membrane potential time constant
+        tau_d=0.02,     # dedritic current time constant
+        tau_r=0.01,     # refractory current time constant
+        tau_s=1         # synapstic plasticity time constant
+    ):  
+        self.size = size
+        self.ntype = 'ExpIF'
+        
+        # parameters for membrane potential v
+        self.v_rest = v_rest
+        self.v_thres = v_thres
+        self.v_reset = v_reset
+        self.v_spike = v_spike
+        self.R_v = R_v
+        self.R_d = R_d
+        self.R_r = R_r
+        self.D = D
+        self.tau_v = tau_v
+        self.tau_d = tau_d
+        self.tau_r = tau_r
+        self.tau_s = tau_s
+        self.theta = 0.0
+        
+        # variables
+        self.refractory = np.zeros(shape=self.size, dtype=np.float32)
+        self.current = np.zeros(shape=self.size, dtype=np.float32)
+        self.voltage = self.v_rest * np.ones(shape=self.size, dtype=np.float32)
+        self.outputs = np.zeros(shape=self.size, dtype=np.float32)
+        
+        self.inputs = None
+        self.synapses = None
+        self.dendrites = None
+        self.stim = None
+        
+        self.compiled = False
+        self.train = False
+        
+    def step(self, dt):
+        '''Implements the exponential integrate and fire nonlinearity.'''
+        
+        dd = (-self.dendrites + self.R_d * (self.synapses * self.inputs)) / self.tau_d * dt
+        dr = (-self.refractory - self.R_r * self.outputs) / self.tau_r * dt
+        self.current = np.sum(self.dendrites, axis=1) + self.refractory
+        if self.stim is not None:
+            self.current += self.stim
+        dv = np.nan_to_num(
+            (self.v_rest - self.voltage + self.D * np.exp((self.voltage - self.v_thres) / self.D) + self.R_v * self.current) / self.tau_v * dt,
+            nan=self.v_spike - self.v_thres,
+            posinf=self.v_spike - self.v_thres
+        )
+        if self.train:
+            ltp = np.abs(self.dendrites.T * self.outputs).T
+            ltd = np.outer(self.refractory - self.theta, self.inputs)
+            self.synapses += (ltp + ltd) / self.tau_s * dt
+        
+        self.dendrites += dd
+        self.refractory += dr
+        self.voltage = np.where(self.outputs, self.v_reset, self.voltage + dv)
+        self.outputs = np.where(self.voltage > self.v_spike, 1.0, 0.0)
+        
+        
+    def __repr__(self):
+        if self.compiled:
+            return f'ExpIFBundle(size={self.size}, inputs={self.inputs.shape})'
+        else:
+            return f'ExpIFBundle(size={self.size}, inputs={self.inputs})'
+
+
 class adEx:
     
     def __init__(self,
         size,           # number of neurons
         v_rest=-70,     # membrane resting potential
         v_thres=-55,    # membrane threshold potential
-        v_reset=-60,    # membrane reset potential
-        R=1,          # membrane resistance
+        v_reset=-65,    # membrane reset potential
+        v_spike=30,
+        R_d=10,         # membrane resistance
+        R_r=20,         # membrane resistance
+        R_v=50,         # membrane resistance
         D=5,            # membrane exponential delta
-        tau=0.1,        # membrane potential time constant
-        tau_c=0.5,      # current time constant
-        a=1.1,          # adaptation linearity coefficient
-        b=1,            # adaptation reset
-        tau_w=0.1       # adaptation time constant
+        tau_v=0.1,      # membrane potential time constant
+        tau_w=0.1,      # adaptation time constant
+        tau_d=0.02,     # dedritic current time constant
+        tau_r=0.01,     # refractory current time constant
+        tau_s=1         # synapstic plasticity time constant
     ):  
         self.size = size
-        self.ntype = 'adEx'
+        self.ntype = 'ExpIF'
         
-        # parameters for membrane potential v
+        # neuron parameters
         self.v_rest = v_rest
         self.v_thres = v_thres
         self.v_reset = v_reset
-        self.R = R
+        self.v_spike = v_spike
+        self.R_v = R_v
+        self.R_d = R_d
+        self.R_r = R_r
         self.D = D
-        self.tau = tau
-        self.tau_c = tau_c
-        
-        # parameters for adaptation w
-        self.a = a
-        self.b = b
+        self.tau_v = tau_v
         self.tau_w = tau_w
+        self.tau_d = tau_d
+        self.tau_r = tau_r
+        self.tau_s = tau_s
+        self.theta = 0.0
+        self.a = 0.01
+        self.b = 1
         
         # variables
-        self.current = np.zeros(shape=(self.size), dtype=np.float32)
-        self.voltage = self.v_rest * np.ones(shape=(self.size), dtype=np.float32)
-        self.w = np.zeros(shape=(self.size), dtype=np.float32)
+        self.refractory = np.zeros(shape=self.size, dtype=np.float32)
+        self.current = np.zeros(shape=self.size, dtype=np.float32)
+        self.w = np.zeros(shape=self.size, dtype=np.float32)
+        self.voltage = self.v_rest * np.ones(shape=self.size, dtype=np.float32)
+        self.outputs = np.zeros(shape=self.size, dtype=np.float32)
+        
         self.inputs = None
         self.synapses = None
+        self.dendrites = None
+        self.stim = None
         
         self.compiled = False
         self.train = False
-    
-    @property
-    def outputs(self):
-        '''Get output/spikes.'''
-        return (self.voltage > 30).astype(np.float32)
         
     def step(self, dt):
         '''Implements the adEx (adaptive exponential) nonlinearity.'''
-        self.current += (self.synapses @ self.inputs - self.current) / self.tau_c * dt
         
-        spike = self.outputs
-        self.w += np.where(spike, self.b, 0)
-        self.voltage = np.where(spike, self.v_reset, self.voltage)
+        dd = (-self.dendrites + self.R_d * (self.synapses * self.inputs)) / self.tau_d * dt
+        dr = (-self.refractory - self.R_r * self.outputs) / self.tau_r * dt
+        self.current = np.sum(self.dendrites, axis=1) + self.refractory
+        if self.stim is not None:
+            self.current += self.stim
+        dw = (self.a * (self.voltage - self.v_rest) - self.w) / self.tau_w * dt
+        dv = np.nan_to_num(
+            (self.v_rest - self.voltage + self.D * np.exp((self.voltage - self.v_thres) / self.D) + self.R_v * (self.current - self.w)) / self.tau_v * dt,
+            nan=self.v_spike - self.v_thres,
+            posinf=self.v_spike - self.v_thres
+        )
+        if self.train:
+            ltp = np.abs(self.dendrites.T * self.outputs).T
+            ltd = np.outer(self.refractory - self.theta, self.inputs)
+            self.synapses += (ltp + ltd) / self.tau_s * dt
         
-        self.w += (self.a * (self.voltage - self.v_rest) - self.w) / self.tau_w * dt
-        self.voltage += (-(self.voltage - self.v_rest) + self.D * np.exp((self.voltage - self.v_thres) / self.D) + (self.current - self.w) / self.R) / self.tau * dt
+        self.dendrites += dd
+        self.refractory += dr
+        self.w += np.where(self.outputs, self.b, 0.0) + dw
+        self.voltage = np.where(self.outputs, self.v_reset, self.voltage + dv)
+        self.outputs = np.where(self.voltage > self.v_spike, 1.0, 0.0)
         
     def __repr__(self):
         if self.compiled:
