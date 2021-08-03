@@ -128,36 +128,30 @@ class Network:
         '''initialize synapses and inputs. also check for coherence of model architecture.'''
         
         if not self.compiled:
-            print('initializing neurons...', end=' ')
             for head in self.connections:
                 n_inputs = np.sum([self.bundles[tail].size for tail in sorted(self.connections[head])])
                 self.bundles[head].inputs = np.zeros(shape=n_inputs, dtype=np.float32)
-                self.bundles[head].synapses = np.random.normal(0, 1 / np.sqrt(n_inputs), size=(self.bundles[head].size, n_inputs)).astype(np.float32)
+                self.bundles[head].synapses = np.random.normal(0, 0.1, size=(self.bundles[head].size, n_inputs)).astype(np.float32)
                 self.bundles[head].dendrites = np.zeros(shape=(self.bundles[head].size, n_inputs), dtype=np.float32)
                 self.bundles[head].compiled = True
-            print('done.')
             
-            print('checking if graph is connected...', end=' ')
             self.compiled = True
             for name in self.bundles:
                 if self.bundles[name].ntype != 'Sensory':
                     if self.bundles[name].inputs is None:
                         self.compiled = False
-            print('done.')
             
-            print('initializing history...', end=' ')
             self.history = {}
             for name in self.bundles:
                 self.history[name] = History()
-            print('done.')
             
             if self.compiled:
-                print('model successfully compiled.\n')
+                print('network successfully compiled.\n')
                 # print(self)
             else:
-                print('model was not compiled. some bundles are not connected.')
+                print('network was not compiled. some bundles are not connected.')
         else:
-            print('model has already been compiled.')
+            print('network has already been compiled.')
     
     def step(self, dt=0.001):
         '''single time step. requires model to be compiled.'''

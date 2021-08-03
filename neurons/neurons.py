@@ -47,8 +47,8 @@ class LIFrate:
         
         if self.train:
             ltp = self.gamma * self.activation(self.gamma * (self.voltage - self.v_thres), deriv=True)
-            ltd = self.theta * self.activation(self.theta * (self.v_rest - self.voltage), deriv=True)
-            self.synapses += np.outer(ltp - ltd, self.inputs) / self.tau_s * dt
+            ltd = self.gamma * self.activation(self.gamma * (self.v_rest - self.voltage), deriv=True)
+            self.synapses += np.outer(ltp - self.theta * ltd, self.inputs) / self.tau_s * dt
         
         self.voltage += (self.v_rest - self.voltage + self.R * self.current) / self.tau_v * dt
         self.outputs = self.activation(self.gamma * (self.voltage - self.v_thres))
