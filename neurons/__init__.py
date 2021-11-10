@@ -1,5 +1,5 @@
 import numpy as np
 
 from .activations import *
-from .neurons import *
+from .bundles import *
 from .network import *

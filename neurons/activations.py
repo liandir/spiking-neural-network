@@ -28,9 +28,15 @@ def f5(x, deriv=False):
         return np.where(x > 0, squ / (squ + 1), 0)
     return np.where(x > 0, 2 * x / np.square(1 + squ), 0)
     
-    
 def exp1(x, deriv=False):
     if not deriv:
         return np.where(x > 0, 1 - np.exp(-x), 0)
     return np.where(x > 0, np.exp(-x), 0)
+
+def sigmoid(x, deriv=False):
+    if not deriv:
+        y = np.where(x >= 0, np.exp(-x), np.exp(x))
+        return y / (1 + y)
+    else:
+        return sigmoid(x) * (1 - sigmoid(x))
 

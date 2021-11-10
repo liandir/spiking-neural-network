@@ -1,6 +1,9 @@
 import numpy as np
 from collections import OrderedDict
 
+from .activations import *
+from .bundles import *
+
 
 
 class History:
@@ -39,7 +42,9 @@ class Network:
         self._history = True
         
     def add(self, ntype, size, name, **kwargs):
-        if name not in self.bundles:
+        if self.compiled:
+            print("model has already been compiled.")
+        elif name not in self.bundles:
             self.bundles[name] = ntype(size, **kwargs)
         else:
             print(f"bundle with name '{name}' already exists.")
@@ -53,11 +58,13 @@ class Network:
             print(f"bundle with name '{name}' does not exist.")
         
     def connect(self, bundle_in, bundle_out):
-        if bundle_in in self.bundles and bundle_out in self.bundles:
+        if self.compiled:
+            print("model has already been compiled.")
+        elif bundle_in in self.bundles and bundle_out in self.bundles:
             if bundle_out in self.connections:
-                self.connections[bundle_out] |= {bundle_in}
+                self.connections[bundle_out] += [bundle_in]
             else:
-                self.connections[bundle_out] = {bundle_in}
+                self.connections[bundle_out] = [bundle_in]
         else:
             if bundle_in not in self.bundles and bundle_out not in self.bundles:
                 print(f"'{bundle_in}' and '{bundle_out}' do not exist.")
@@ -70,7 +77,7 @@ class Network:
         if self.compiled:
             print("model has already been compiled.")
         elif bundle_in in self.bundles and bundle_out in self.bundles:
-            self.connections[bundle_out] -= {bundle_in}
+            self.connections[bundle_out].remove(bundle_in)
         else:
             if bundle_in not in self.bundles and bundle_out not in self.bundles:
                 print(f"'{bundle_in}' and '{bundle_out}' do not exist.")
@@ -129,7 +136,7 @@ class Network:
         
         if not self.compiled:
             for head in self.connections:
-                n_inputs = np.sum([self.bundles[tail].size for tail in sorted(self.connections[head])])
+                n_inputs = np.sum([self.bundles[tail].size for tail in self.connections[head]])
                 self.bundles[head].inputs = np.zeros(shape=n_inputs, dtype=np.float32)
                 self.bundles[head].synapses = np.random.normal(0, 0.1, size=(self.bundles[head].size, n_inputs)).astype(np.float32)
                 self.bundles[head].dendrites = np.zeros(shape=(self.bundles[head].size, n_inputs), dtype=np.float32)
@@ -158,8 +165,7 @@ class Network:
         
         # update inputs of bundles
         for head in self.connections:
-            inputs = np.concatenate([self.bundles[tail].outputs for tail in sorted(self.connections[head])])
-            self.bundles[head].inputs = inputs
+            self.bundles[head].inputs = np.concatenate([self.bundles[tail].outputs for tail in self.connections[head]])
         
         # update neuron states
         for name in self.bundles:
